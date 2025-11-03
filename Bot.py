@@ -9,7 +9,7 @@ from telegram.ext import (
 )
 
 BOT_TOKEN = "8509764843:AAEOqn1Kaf8-n0OZXBizcGCLz_-OuYo7cO0"
-ADMIN_CHAT_ID = "-1003139491276"
+ADMIN_CHAT_ID = -1003139491276
 
 # Bosqichlar
 ASK_PHONE, ASK_ROUTE, ASK_NAME = range(3)
@@ -132,3 +132,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
