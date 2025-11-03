@@ -1,108 +1,116 @@
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ConversationHandler, ContextTypes
+from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
-# 🚀 To‘g‘ridan-to‘g‘ri token va guruh ID
-BOT_TOKEN = "8509764843:AAEOqn1Kaf8-n0OZXBizcGCLz_-OuYo7cO0"
+BOT_TOKEN = "YOUR_BOT_TOKEN"
 ADMIN_CHAT_ID = "-1003139491276"
 
 # Bosqichlar
-ASK_NAME, ASK_PHONE, ASK_ROUTE, ASK_PEOPLE = range(4)
+ASK_PHONE, ASK_ROUTE, ASK_NAME = range(3)
 
-# /start
+
+# --- /start ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[KeyboardButton("🚖 Taksi chaqirish")]]
+    keyboard = [
+        [KeyboardButton("🚖 Taksi chaqirish"), KeyboardButton("📦 Pochta yuborish")]
+    ]
     await update.message.reply_text(
-        "Assalomu alaykum! Taksi buyurtma berish uchun pastdagi tugmani bosing 👇",
+        "Assalomu alaykum! Quyidagi xizmatlardan birini tanlang 👇",
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     )
 
-# Ismni so‘rash
-async def ask_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Ismingizni kiriting:")
-    return ASK_NAME
 
-# Telefon raqamini so‘rash
-async def ask_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["name"] = update.message.text.strip()
-    await update.message.reply_text("Telefon raqamingizni kiriting (masalan: +998901234567):")
+# --- Taksi yoki pochta tanlanganda ---
+async def choose_service(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    context.user_data["service"] = "taksi" if "Taksi" in text else "pochta"
+
+    # Telefon so‘rash
+    contact_button = KeyboardButton("📞 Telegram raqamimni yuborish", request_contact=True)
+    reply_markup = ReplyKeyboardMarkup(
+        [[contact_button]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+    await update.message.reply_text(
+        "Iltimos, telefon raqamingizni yozing yoki pastdagi tugmani bosib yuboring 👇",
+        reply_markup=reply_markup
+    )
     return ASK_PHONE
 
-# Yo‘nalishni so‘rash
-async def ask_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["phone"] = update.message.text.strip()
-    keyboard = [["Turtkul → Toshkent", "Toshkent → Turtkul"]]
-    await update.message.reply_text(
-        "Qayerdan qayerga ketmoqchisiz?",
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
-    )
+
+# --- Raqamni tugma orqali olish ---
+async def contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    contact = update.message.contact
+    context.user_data["phone"] = contact.phone_number
+    await ask_route(update, context)
     return ASK_ROUTE
 
-# Odamlar sonini so‘rash
-async def ask_people(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["route"] = update.message.text.strip()
-    await update.message.reply_text("Nechta kishi borasiz?")
-    return ASK_PEOPLE
 
-# ✅ Buyurtma yuborish
+# --- Raqamni matn sifatida olish ---
+async def phone_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["phone"] = update.message.text
+    await ask_route(update, context)
+    return ASK_ROUTE
+
+
+# --- Yo‘nalishni so‘rash ---
+async def ask_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [["Toshkent → Turtkul", "Turtkul → Toshkent"]]
+    await update.message.reply_text(
+        "Yo‘nalishni tanlang 👇",
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    )
+    return ASK_NAME
+
+
+# --- Ismni so‘rash ---
+async def ask_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["route"] = update.message.text
+    await update.message.reply_text("Ismingizni yozing (yoki ismingiz avtomatik olinadi):")
+    return "SEND_ORDER"
+
+
+# --- So‘rovni yuborish ---
 async def send_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["people"] = update.message.text.strip()
-
-    name = context.user_data.get("name")
+    user = update.message.from_user
+    name = update.message.text.strip() if update.message.text else user.first_name
     phone = context.user_data.get("phone")
     route = context.user_data.get("route")
-    people = context.user_data.get("people")
+    service = context.user_data.get("service")
 
-    message = (
-        f"📢 *Yangi buyurtma!*\n"
-        f"📍 Yo‘nalish: {route}\n"
-        f"👥 Odamlar soni: {people}\n"
-        f"🧍 Ism: {name}\n"
-        f"📞 Tel: {phone}"
-    )
+    if service == "taksi":
+        message = f"🚖 <b>Taksi buyurtmasi!</b>\n📍 Yo‘nalish: {route}\n🧍 Ism: {name}\n📞 Tel: {phone}"
+    else:
+        message = f"📢 <b>Pochta Hizmati!</b>\n📍 Yo‘nalish: {route}\n🧍 Ism: {name}\n📞 Tel: {phone}"
 
-    # Admin guruhiga yuborish
-    await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=message, parse_mode="Markdown")
+    await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=message, parse_mode="HTML")
 
     # Foydalanuvchiga javob
-    keyboard = [[KeyboardButton("🚖 Taksi chaqirish")]]
+    await update.message.reply_text("✅ So‘rovingiz yuborildi! Tez orada siz bilan bog‘lanishadi.")
+
+    # Yana menyuni chiqarish
+    keyboard = [
+        [KeyboardButton("🚖 Taksi chaqirish"), KeyboardButton("📦 Pochta yuborish")]
+    ]
     await update.message.reply_text(
-        "✅ Buyurtma yuborildi! Tez orada siz bilan bog‘lanishadi.",
+        "Yana xizmat tanlash uchun pastdagi tugmalardan foydalaning 👇",
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     )
 
-    return ConversationHandler.END
 
-# ❌ Bekor qilish
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Xizmat uchun rahmat 😊")
-    keyboard = [[KeyboardButton("🚖 Taksi chaqirish")]]
-    await update.message.reply_text(
-        "Yana buyurtma berish uchun pastdagi tugmani bosing 👇",
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    )
-    return ConversationHandler.END
-
-# Asosiy funksiya
+# --- Asosiy ishga tushirish ---
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    conv_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("🚖 Taksi chaqirish"), ask_name)],
-        states={
-            ASK_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_phone)],
-            ASK_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_route)],
-            ASK_ROUTE: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_people)],
-            ASK_PEOPLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, send_order)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-    )
-
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(conv_handler)
+    app.add_handler(MessageHandler(filters.Regex("🚖 Taksi chaqirish|📦 Pochta yuborish"), choose_service))
+    app.add_handler(MessageHandler(filters.CONTACT, contact_handler))
+    app.add_handler(MessageHandler(filters.Regex(r"^\+?\d{7,}$"), phone_text_handler))
+    app.add_handler(MessageHandler(filters.Regex("Toshkent|Turtkul"), ask_name))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_order))
 
-    print("🚀 Bot ishga tushdi...")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
-
