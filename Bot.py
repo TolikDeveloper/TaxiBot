@@ -1,7 +1,7 @@
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
-BOT_TOKEN = "YOUR_BOT_TOKEN"
+BOT_TOKEN = "8509764843:AAEOqn1Kaf8-n0OZXBizcGCLz_-OuYo7cO0"
 ADMIN_CHAT_ID = "-1003139491276"
 
 # Bosqichlar
@@ -114,3 +114,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
