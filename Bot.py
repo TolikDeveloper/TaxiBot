@@ -1,29 +1,24 @@
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    ConversationHandler,
-    ContextTypes,
-    filters,
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
 BOT_TOKEN = "8509764843:AAEOqn1Kaf8-n0OZXBizcGCLz_-OuYo7cO0"
-ADMIN_CHAT_ID = -1003139491276
+ADMIN_CHAT_ID = "-1003139491276"
 
-# Bosqichlar
-ASK_PHONE, ASK_ROUTE, ASK_NAME = range(3)
-
-# --- /start ---
+# --- /start komandasi ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    first_name = user.first_name or "Ismsiz foydalanuvchi"
+
+    # Tugmalar: Taksi va Pochta
     keyboard = [
         [KeyboardButton("🚖 Taksi chaqirish"), KeyboardButton("📦 Pochta yuborish")]
     ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
     await update.message.reply_text(
-        "Assalomu alaykum! Quyidagi xizmatlardan birini tanlang 👇",
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        f"Salom, {first_name}! Xizmat tanlang 👇",
+        reply_markup=reply_markup
     )
-    return ASK_PHONE
 
 
 # --- Tanlangan xizmat ---
@@ -31,79 +26,72 @@ async def choose_service(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     if "Taksi" in text:
         context.user_data["service"] = "taksi"
+        msg_text = "Taksi chaqirish uchun telefon raqamingizni yozing yoki pastdagi tugmani bosib yuboring 👇"
     elif "Pochta" in text:
         context.user_data["service"] = "pochta"
+        msg_text = "Pochta xizmati uchun telefon raqamingizni yozing yoki pastdagi tugmani bosib yuboring 👇"
     else:
         await update.message.reply_text("Iltimos, menyudan xizmatni tanlang 👆")
-        return ASK_PHONE
+        return
 
-    # Telefon raqamini so‘rash tugmasi
     contact_button = KeyboardButton("📞 Telegram raqamimni yuborish", request_contact=True)
     reply_markup = ReplyKeyboardMarkup([[contact_button]], resize_keyboard=True, one_time_keyboard=True)
-
-    await update.message.reply_text(
-        "Iltimos, telefon raqamingizni yozing yoki pastdagi tugmani bosib yuboring 👇",
-        reply_markup=reply_markup
-    )
-    return ASK_ROUTE
+    await update.message.reply_text(msg_text, reply_markup=reply_markup)
 
 
-# --- Telefonni tugma orqali olish ---
+# --- Agar foydalanuvchi raqamni tugma orqali yuborsa ---
 async def contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contact = update.message.contact
-    context.user_data["phone"] = contact.phone_number
-    await update.message.reply_text("✅ Rahmat! Endi yo‘nalishni tanlang:")
-    return ASK_NAME
+    phone = contact.phone_number
+    name = update.message.from_user.first_name or "Ismsiz foydalanuvchi"
+
+    context.user_data["phone"] = phone
+    context.user_data["name"] = name
+
+    await update.message.reply_text("✅ Rahmat! Endi manzilingizni yuboring (masalan: Toshkent → Turtkul).")
 
 
-# --- Telefonni matn orqali olish ---
+# --- Agar foydalanuvchi raqamni yozib yuborsa ---
 async def phone_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = update.message.text
+    name = update.message.from_user.first_name or "Ismsiz foydalanuvchi"
+
     if not any(char.isdigit() for char in phone):
         await update.message.reply_text("❌ Iltimos, telefon raqamingizni to‘g‘ri yozing.")
-        return ASK_ROUTE
+        return
+
     context.user_data["phone"] = phone
-    await update.message.reply_text("✅ Rahmat! Endi yo‘nalishni tanlang:")
-    return ASK_NAME
+    context.user_data["name"] = name
+
+    await update.message.reply_text("✅ Rahmat! Endi manzilingizni yuboring (masalan: Toshkent → Turtkul).")
 
 
-# --- Yo‘nalish ---
-async def route_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    if text not in ["Toshkent → Turtkul", "Turtkul → Toshkent"]:
-        await update.message.reply_text("❌ Iltimos, yo‘nalishni menyudan tanlang.")
-        return ASK_NAME
-    context.user_data["route"] = text
-    await update.message.reply_text("Ismingizni kiriting (yoki avtomatik olinadi):")
-    return ConversationHandler.END  # End conversation here, next message handled globally
-
-
-# --- Yakuniy xabar yuborish ---
-async def send_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.message.from_user
-    name = update.message.text.strip() if update.message.text else user.first_name
+# --- Manzilni qabul qilish va guruhga yuborish ---
+async def location_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    address = update.message.text
     phone = context.user_data.get("phone")
-    route = context.user_data.get("route")
+    name = context.user_data.get("name")
     service = context.user_data.get("service")
 
-    if not all([phone, route, service]):
-        await update.message.reply_text("❌ Iltimos, avval barcha ma'lumotlarni to‘ldiring.")
+    if not all([phone, service]):
+        await update.message.reply_text("Iltimos, avval telefon raqamingizni yuboring va xizmatni tanlang.")
         return
 
     if service == "taksi":
-        message = f"🚖 <b>Taksi buyurtmasi!</b>\n📍 Yo‘nalish: {route}\n🧍 Ism: {name}\n📞 Tel: {phone}"
+        msg = f"🚖 <b>Taksi buyurtmasi!</b>\n📍 Yo‘nalish: {address}\n🧍 Ism: {name}\n📞 Tel: {phone}"
     else:
-        message = f"📢 <b>Pochta Hizmati!</b>\n📍 Yo‘nalish: {route}\n🧍 Ism: {name}\n📞 Tel: {phone}"
+        msg = f"📢 <b>Pochta Hizmati!</b>\n📍 Yo‘nalish: {address}\n🧍 Ism: {name}\n📞 Tel: {phone}"
 
-    await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=message, parse_mode="HTML")
+    await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=msg, parse_mode="HTML")
 
-    # Javob + yana menyuni chiqarish
+    # Foydalanuvchiga javob + yana xizmat menyusi
     keyboard = [
         [KeyboardButton("🚖 Taksi chaqirish"), KeyboardButton("📦 Pochta yuborish")]
     ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text(
         "✅ So‘rovingiz yuborildi! Tez orada siz bilan bog‘lanishadi.\n\nYana xizmat tanlash uchun pastdagi tugmalardan foydalaning 👇",
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        reply_markup=reply_markup
     )
 
 
@@ -111,25 +99,14 @@ async def send_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start),
-                      MessageHandler(filters.Regex("🚖 Taksi chaqirish|📦 Pochta yuborish"), choose_service)],
-        states={
-            ASK_PHONE: [
-                MessageHandler(filters.CONTACT, contact_handler),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, phone_text_handler)
-            ],
-            ASK_NAME: [MessageHandler(filters.Regex("Toshkent → Turtkul|Turtkul → Toshkent"), route_handler)],
-        },
-        fallbacks=[]
-    )
-
-    app.add_handler(conv_handler)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_order))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.Regex("🚖 Taksi chaqirish|📦 Pochta yuborish"), choose_service))
+    app.add_handler(MessageHandler(filters.CONTACT, contact_handler))
+    app.add_handler(MessageHandler(filters.Regex(r"^\+?\d{7,}$"), phone_text_handler))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, location_handler))
 
     app.run_polling()
 
 
 if __name__ == "__main__":
     main()
-
